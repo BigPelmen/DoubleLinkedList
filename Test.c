@@ -1,4 +1,6 @@
 #include "DbldLnkdLst.c"
+#include <limits.h>
+#include <unistd.h>
 
 int main() {
     linked_list_t lsty = {};
@@ -19,7 +21,8 @@ int main() {
     ListInsertAfter(&lsty, lsty.tail, 121);
     ListInsertAfter(&lsty, lsty.head, 12345);
     ListInsertAfter(&lsty, 0, 55555);
-    ListPrintOrderly(&lsty, HEAD_TO_TAIL);
+    ListPrintOrderly(&lsty, TAIL_TO_HEAD);
+    ListVerify(&lsty);
     ListDump(stderr, &lsty);
     return 0;
 }
