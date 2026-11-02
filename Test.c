@@ -24,5 +24,9 @@ int main() {
     ListPrintOrderly(&lsty, TAIL_TO_HEAD);
     ListVerify(&lsty);
     ListDump(stderr, &lsty);
+    ListDestroy(&lsty);
+    // CreateDump(&lsty, 1, "Bombastic");
+    dump_storage_t dmp_strg = {};
+    CreateDumpStorage(&lsty, &dmp_strg, NAMES_3, "PELMENY", NULL, "TEXTICK.txt");
     return 0;
 }
