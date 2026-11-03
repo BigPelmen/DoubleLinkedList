@@ -16,12 +16,15 @@
     #define MAX_CMD_LINE_LEN 8191
     #define PATH_SEPARATOR '/' // FIXME Do smth with path separators for OS (it works but for Windows it si better to use '\\')
     #define MAKE_DIRECTORY(dir_name) _mkdir(dir_name)
+    #define CHANGE_DIRECTORY(dir_path) _chdir(dir_path)
 #else
     #include <sys/stat.h>
     #include <sys/types.h>
+    #include <unistd.h>
     #define MAX_CMD_LINE_LEN 131200
     #define PATH_SEPARATOR '/'
     #define MAKE_DIRECTORY(dir_name) mkdir(dir_name, 0755)
+    #define CHANGE_DIRECTORY(dir_path) _chdir(dir_path)
 #endif
 
 #define POISON_BYTE 0xAA
@@ -29,6 +32,8 @@
 #define CMD_EXTRA_SYMBOLS_AMOUNT 128
 #define DATA_STAMP_MAX_LEN 32
 #define START_DUMPS_AMOUNT 16
+#define ORIENTATION_VER "TB"
+#define ORIENTATION_HOR "LR"
 
 static const char DFLT_DIR_NAME[] = "MyDump";
 static const char DFLT_HTML_NAME[] = "MyHtml.html";
@@ -45,6 +50,8 @@ static const char DFLT_DUMP_TXT_NAME[] = "MyDumpTxt.txt";
 
 #define CREATE_DIR_PATH(dest, str_size, dir_name, f_name) \
     snprintf(dest, str_size, "%s%c%s", dir_name, PATH_SEPARATOR, f_name)
+
+#define CLOSE_BRACE(fp) fprintf(fp, "}\n")
 
 typedef int list_elem_t;
 
@@ -141,9 +148,21 @@ void ListCheckZeroethElems(linked_list_t *lst);
 void ListAnalyzeErrors(linked_list_t *lst, FILE *output_stream);
 // int CreateDump(linked_list_t *lst, int pathes_amount, ...);
 // void FillGraphStruct(linked_list_t *lst, graph_dump_t *dump_struct, int names_amount, va_list ap);
-int AddToDumpDir(dump_storage_t *strg, one_dump_t *o_dmp);
+
+int GenGraph(one_dump_t *o_dmp, linked_list_t *lst, const char *commentary);
+void PrintHeadToTail(one_dump_t *o_dmp, linked_list_t *lst);
+void PrintTailToHead(one_dump_t *o_dmp, linked_list_t *lst);
+void PrintIndexatedPath(one_dump_t *o_dmp, linked_list_t *lst);
+void PrintStartingNodes(FILE *fp, linked_list_t *lst);
+bool AddHeadNodeMarker(one_dump_t *o_dmp, size_t index);
+bool AddTailNodeMarker(one_dump_t *o_dmp, size_t index);
+void AddFreeNodeMarker(one_dump_t *o_dmp, linked_list_t *lst, size_t index, size_t *free_cntr);
+void PrintColorfulNode(FILE *fp, linked_list_t *lst, size_t index, const char *color);
+const char *CrPngGraphLine(const char *txt_path, const char *png_path);
+int DumpToDumpDir(dump_storage_t *strg, one_dump_t *o_dmp, const char *commentary);
 char *AddNumToName(const char *f_name, size_t number);
 uint8_t CountDigits(size_t number);
+int ChWorkingPath(const char *dir_path);
 void FillStorageStructNames(dump_storage_t *storage, dir_html_txt_t names_amount, va_list ap);
 const char *CrDirFilePath(const char *dir_name, const char *f_name);
 FILE *LogOpen(const char *f_name, const char *f_mode);
@@ -490,20 +509,6 @@ void ListAnalyzeErrors(linked_list_t *lst, FILE *output_stream) {
 //     return errno;
 // }
 
-
-// typedef struct {
-//     const char *dir_name;
-//     const char *html_name;
-//     const char *txt_name;
-//     FILE *fp_html, *fp_txt;
-// } dump_storage_t;
-
-// typedef struct {
-//     const char *png_name;
-//     const char *graph_txt_name;
-//     FILE *fp_graph_txt;
-// } one_dump_t;
-
 int CreateDumpStorage(linked_list_t *lst, dump_storage_t *storage, dir_html_txt_t names_amount, ...) {
     assert(lst);
     assert(storage);
@@ -550,21 +555,185 @@ int CreateOneDumpNames(one_dump_t *o_dmp, o_dmp_mode_t names_amount, ...) {
     
 // }
 
-// TODO GenGraph(one_dump_t *o_dmp) {
+// TODO GenGraph(one_dump_t *o_dmp, const char *commentary) {
 // Тупо создаёт файл и записывает в него, а потом делает png, и может быть вызвана откуда угодно. В функции ниже имена фалов заранее переделывабтся под место папки
 // }
+
+int GenGraph(one_dump_t *o_dmp, linked_list_t *lst, const char *commentary) {
+    assert(o_dmp);
+    assert(lst);
+
+    o_dmp->fp_graph_txt = LogOpen(o_dmp->graph_txt_name, "w");
+    fprintf(o_dmp->fp_graph_txt, "digraph G {\n");
+    fprintf(o_dmp->fp_graph_txt, "nodesep=0.6;\n");
+    fprintf(o_dmp->fp_graph_txt, "label=\"%s\"; labelloc=\"t\"; fontsize=20; fontname=\"Verdana\";\n", commentary);
+    fprintf(o_dmp->fp_graph_txt, "rankdir=%s;\n", ORIENTATION_VER);
+    fprintf(o_dmp->fp_graph_txt, "subgraph cluster_1 {\n");
+    PrintHeadToTail(o_dmp, lst);
+    CLOSE_BRACE(o_dmp->fp_graph_txt);
+    fprintf(o_dmp->fp_graph_txt, "subgraph cluster_2 {\n");
+    PrintTailToHead(o_dmp, lst);
+    CLOSE_BRACE(o_dmp->fp_graph_txt);
+    fprintf(o_dmp->fp_graph_txt, "subgraph cluster_3 {\n");
+    PrintIndexatedPath(o_dmp, lst);
+    CLOSE_BRACE(o_dmp->fp_graph_txt);
+    CLOSE_BRACE(o_dmp->fp_graph_txt);
+    fclose(o_dmp->fp_graph_txt);
+    system(CrPngGraphLine(o_dmp->graph_txt_name, o_dmp->png_name));
+    return errno;
+}
+
+void PrintHeadToTail(one_dump_t *o_dmp, linked_list_t *lst) {
+    assert(o_dmp);
+    assert(lst);
+
+    fprintf(o_dmp->fp_graph_txt, "label=<<FONT FACE=\"Verdana\"><B>Head to Tail</B></FONT>>;\n");
+    fprintf(o_dmp->fp_graph_txt, "node[shape=Mrecord];\n");
+    int ind = lst->head;
+    size_t cntr = 2;
+    while (ind != lst->tail && cntr < lst->list_arr_size) {
+        fprintf(o_dmp->fp_graph_txt, "htot%llu [label=\"{index = %d | {prev = %d | next = %d} | value = %d}\", color=\"#a70000\", fontsize=10];\n", 
+            cntr, ind, lst->arr_prev[ind], lst->arr_next[ind], lst->arr_data[ind]);
+        fprintf(o_dmp->fp_graph_txt, "htot%llu -> htot%llu;\n", cntr, cntr + 1);
+        ind = lst->arr_next[ind];
+        cntr++;
+    }
+    fprintf(o_dmp->fp_graph_txt, "htot%llu [label=\"{index = %d | {prev = %d | next = %d} | value = %d}\", color=\"#a70000\", fontsize=10];\n", 
+            cntr, ind, lst->arr_prev[ind], lst->arr_next[ind], lst->arr_data[ind]);
+    fprintf(o_dmp->fp_graph_txt, "htot%llu -> htot%d [constraint=false];\n", cntr, 2);
+}
+
+void PrintTailToHead(one_dump_t *o_dmp, linked_list_t *lst) {
+    assert(o_dmp);
+    assert(lst);
+
+    fprintf(o_dmp->fp_graph_txt, "label=<<FONT FACE=\"Verdana\"><B>Tail to Head</B></FONT>>;\n");
+    fprintf(o_dmp->fp_graph_txt, "node[shape=Mrecord];\n");
+    int ind = lst->tail;
+    size_t cntr = 2;
+    while (ind != lst->head && cntr < lst->list_arr_size) {
+        fprintf(o_dmp->fp_graph_txt, "ttoh%llu [label=\"{index = %d | {next = %d | prev = %d} | value = %d}\", color=\"#a70000\", fontsize=10];\n", 
+            cntr, ind, lst->arr_next[ind], lst->arr_prev[ind], lst->arr_data[ind]);
+        fprintf(o_dmp->fp_graph_txt, "ttoh%llu -> ttoh%llu;\n", cntr, cntr + 1);
+        ind = lst->arr_prev[ind];
+        cntr++;
+    }
+    fprintf(o_dmp->fp_graph_txt, "ttoh%llu [label=\"{index = %d | {next = %d | prev = %d} | value = %d}\", color=\"#a70000\", fontsize=10];\n", 
+            cntr, ind, lst->arr_next[ind], lst->arr_prev[ind], lst->arr_data[ind]);
+    fprintf(o_dmp->fp_graph_txt, "ttoh%llu -> ttoh%d [constraint=false];\n", cntr, 2);
+}
+
+void PrintIndexatedPath(one_dump_t *o_dmp, linked_list_t *lst) {
+    assert(o_dmp);
+    assert(lst);
+
+    PrintStartingNodes(o_dmp->fp_graph_txt, lst);
+    bool head_found = false, tail_found = false;
+    for (size_t index = 1, free_cntr = 0; index < lst->list_arr_size; index++) {
+        fprintf(o_dmp->fp_graph_txt, "anchor%llu [shape=point, style=invis, width=0, height=0];\n", index);
+        fprintf(o_dmp->fp_graph_txt, "anchor%llu -> anchor%llu [style=invis, weight=100];\n", index - 1, index);
+        if (lst->arr_next[index] == EMPTY_SPACE || lst->arr_prev[index] == EMPTY_SPACE) {
+            AddFreeNodeMarker(o_dmp, lst, index, &free_cntr);
+        }
+        else {
+            if (index == (size_t)lst->head) {
+                PrintColorfulNode(o_dmp->fp_graph_txt, lst, index, "#1600a7");
+                if (!head_found) {
+                    head_found = AddHeadNodeMarker(o_dmp, index);
+                }
+            }
+            else if (index == (size_t)lst->tail) {
+                PrintColorfulNode(o_dmp->fp_graph_txt, lst, index, "#df9d05");
+                if (!tail_found) {
+                    tail_found = AddTailNodeMarker(o_dmp, index);
+                }
+            }
+            else {
+                PrintColorfulNode(o_dmp->fp_graph_txt, lst, index, "#a70000");
+                fprintf(o_dmp->fp_graph_txt, "{rank=same; anchor%llu; ind%llu; }\n", index, index);
+            }
+        }
+        fprintf(o_dmp->fp_graph_txt, "ind%llu -> ind%llu;\n", index - 1, index);
+    }
+}
+
+void PrintStartingNodes(FILE *fp, linked_list_t *lst) {
+    assert(fp);
+    assert(lst);
+
+    fprintf(fp, "label=<<FONT FACE=\"Verdana\"><B>Path by Indexation</B></FONT>>;\n");
+    fprintf(fp, "node[shape=Mrecord];\n");
+    fprintf(fp, "ind0 [label=\"{index = 0 | {next (head) = %d | prev (tail) = %d} | value (IMPLIED PZ) = %d}\", color=\"#a70000\", fontsize=10];\n", 
+        lst->arr_next[0], lst->arr_prev[0], lst->arr_data[0]);
+    fprintf(fp, "anchor0 [shape=point, style=invis, width=0, height=0];\n");
+    fprintf(fp, "{rank=same; anchor0; ind0; }\n");
+}
+
+bool AddHeadNodeMarker(one_dump_t *o_dmp, size_t index) {
+    assert(o_dmp);
+
+    fprintf(o_dmp->fp_graph_txt, "head [shape=ellipse, label=\"HEAD\", color=\"#1600a7\", fontsize=12];\n");
+    fprintf(o_dmp->fp_graph_txt, "{rank=same; anchor%llu; ind%llu; head; }\n", index, index);
+    fprintf(o_dmp->fp_graph_txt, "head :e -> anchor%llu :w [constraint=false];\n", index);
+    return true;
+}
+
+bool AddTailNodeMarker(one_dump_t *o_dmp, size_t index) {
+    assert(o_dmp);
+
+    fprintf(o_dmp->fp_graph_txt, "tail [shape=ellipse, label=\"TAIL\", color=\"#df9d05\", fontsize=12];\n");
+    fprintf(o_dmp->fp_graph_txt, "{rank=same; anchor%llu; ind%llu; tail; }\n", index, index);
+    fprintf(o_dmp->fp_graph_txt, "tail :e -> anchor%llu :w [constraint=false];\n", index);
+    return true;
+}
+
+void AddFreeNodeMarker(one_dump_t *o_dmp, linked_list_t *lst, size_t index, size_t *free_cntr) {
+    assert(o_dmp);
+    assert(lst);
+    assert(free_cntr);
+
+    fprintf(o_dmp->fp_graph_txt, "free%llu [shape=ellipse, label=\"FREE\", color=\"#03a700\", fontsize=12];\n", *free_cntr);
+    fprintf(o_dmp->fp_graph_txt, "ind%llu [label=\"{ index = %llu | {prev = %d | next = %d} | value = %d}\", color=\"#03a700\", fontsize=10];\n", 
+        index, index, lst->arr_prev[index], lst->arr_next[index], lst->arr_data[index]);
+    fprintf(o_dmp->fp_graph_txt, "{rank=same; anchor%llu; ind%llu; free%llu; }\n", index, index, *free_cntr);
+    fprintf(o_dmp->fp_graph_txt, "free%llu :e -> anchor%llu :w [constraint=false];\n", *free_cntr, index);
+    (*free_cntr)++;
+}
+
+void PrintColorfulNode(FILE *fp, linked_list_t *lst, size_t index, const char *color) {
+    assert(fp);
+    assert(lst);
+    assert(color);
+
+    fprintf(fp, "ind%llu [label=\"{ index = %llu | {prev = %d | next = %d} | value = %d}\", color=\"%s\", fontsize=10];\n", 
+        index, index, lst->arr_prev[index], lst->arr_next[index], lst->arr_data[index], color);
+}
+
+const char *CrPngGraphLine(const char *txt_path, const char *png_path) {
+    assert(txt_path);
+    assert(png_path);
+
+    size_t full_size = CMD_EXTRA_SYMBOLS_AMOUNT + strlen(txt_path) + strlen(png_path);
+    char *cmd_line = (char *)calloc(full_size, sizeof(char));
+    if (cmd_line == NULL) {
+        return NULL;
+    }
+    snprintf(cmd_line, CMD_EXTRA_SYMBOLS_AMOUNT, "dot \"%s\" -Tpng  -o \"%s\"", txt_path, png_path);
+    return cmd_line;
+}
 
 // TODO AssHtml(strg) {
 // Собирает html
 // }
 
-int AddToDumpDir(dump_storage_t *strg, one_dump_t *o_dmp) {
+int DumpToDumpDir(dump_storage_t *strg, one_dump_t *o_dmp, const char *commentary) {
     assert(strg);
     assert(o_dmp);
 
     o_dmp->graph_txt_name = (const char *)AddNumToName(o_dmp->graph_txt_name, strg->dumps_amount + 1);
     o_dmp->png_name = (const char *)AddNumToName(o_dmp->png_name, strg->dumps_amount + 1);
-    o_dmp->graph_txt_name = CrDirFilePath(strg->dir_name, o_dmp->graph_txt_name);
+    ChWorkingPath(strg->dir_name);
+    GenGraph(o_dmp, strg->dumped_lst, commentary);
     // сначала пользователь вызывает именование файлов. Потом деалет с заполненными именами что хочет. Если ему нужно, то он может вызвать эту функцию и получить GenGraph либо в эту папку сторедж либо просто вызвать GenGraph
     if (strg->dumps_amount >= strg->dumps_massive_size) {
         strg->dumps_massive_size *= 2;
@@ -580,7 +749,7 @@ int AddToDumpDir(dump_storage_t *strg, one_dump_t *o_dmp) {
         return errno;
     }
     strg->dumps[strg->dumps_amount++] = *o_dmp;
-
+    ChWorkingPath("..");
     return errno;
 }
 
@@ -615,6 +784,16 @@ uint8_t CountDigits(size_t number) {
         cnt++;
     }
     return cnt;
+}
+
+int ChWorkingPath(const char *dir_path) {
+    assert(dir_path);
+
+    if (CHANGE_DIRECTORY(dir_path) < 0) {
+        fprintf(stderr, "Did not manage to change the directory to %s\n", dir_path);
+        return errno;
+    }
+    return 0;
 }
 
 void FillStorageStructNames(dump_storage_t *storage, dir_html_txt_t names_amount, va_list ap) {
@@ -711,7 +890,7 @@ int CrDirWhereExecuted(const char *dir_name) {
 
     if (MAKE_DIRECTORY(dir_name) < 0) {
         fprintf(stderr, "Directory %s has already existed or it is impossible to create one\n", dir_name);
-        return -1;
+        return errno;
     }
     return 0;
 }
