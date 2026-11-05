@@ -48,6 +48,12 @@ int main() {
     DumpToDumpDir(&dmp_strg, &o_dmp, "Dump 3");
     AssHtml(&dmp_strg);
     RunStorageHtml(&dmp_strg);
+    ListPop(&lsty, 2);
+    ListInsertAfter(&lsty, lsty.tail, 98765);
+    ListInsertAfter(&lsty, lsty.tail, 56789);
+    DumpToDumpDir(&dmp_strg, &o_dmp, "Dump 4");
+    AssHtml(&dmp_strg);
+    RunStorageHtml(&dmp_strg);
     ListDestroy(&lsty);
     
     return 0;

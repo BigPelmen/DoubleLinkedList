@@ -576,7 +576,8 @@ int GenGraph(one_dump_t *o_dmp, linked_list_t *lst, const char *commentary) {
 
     o_dmp->fp_graph_txt = LogOpen(o_dmp->graph_txt_name, "w");
     fprintf(o_dmp->fp_graph_txt, "digraph G {\n");
-    fprintf(o_dmp->fp_graph_txt, "nodesep=0.6;\n");
+    fprintf(o_dmp->fp_graph_txt, "nodesep=0.5;\n");
+    fprintf(o_dmp->fp_graph_txt, "splines=spline;\n");
     fprintf(o_dmp->fp_graph_txt, "label=\"%s\"; labelloc=\"t\"; fontsize=20; fontname=\"Verdana\";\n", commentary);
     fprintf(o_dmp->fp_graph_txt, "rankdir=%s;\n", ORIENTATION_VER);
     fprintf(o_dmp->fp_graph_txt, "subgraph cluster_1 {\n");
@@ -638,9 +639,9 @@ void PrintIndexatedPath(one_dump_t *o_dmp, linked_list_t *lst) {
     assert(o_dmp);
     assert(lst);
 
+    fprintf(o_dmp->fp_graph_txt, "node[shape=Mrecord, penwidth=2.5];\n");
     PrintStartingNodes(o_dmp->fp_graph_txt, lst);
     bool head_found = false, tail_found = false;
-    
     for (size_t index = 1, free_cntr = 0; index < lst->list_arr_size; index++) {
         fprintf(o_dmp->fp_graph_txt, "anchor%llu [shape=point, style=invis, width=0, height=0];\n", index);
         fprintf(o_dmp->fp_graph_txt, "anchor%llu -> anchor%llu [style=invis, weight=100];\n", index - 1, index);
@@ -665,11 +666,11 @@ void PrintIndexatedPath(one_dump_t *o_dmp, linked_list_t *lst) {
                 fprintf(o_dmp->fp_graph_txt, "{rank=same; anchor%llu; ind%llu; }\n", index, index);
             }
         }
-        fprintf(o_dmp->fp_graph_txt, "ind%llu -> ind%llu [weight=50, style=dashed, dir=both, arrowsize=0.5, penwidth=0.5];\n", index - 1, index);
+        fprintf(o_dmp->fp_graph_txt, "ind%llu -> ind%llu [weight=100, style=dashed, dir=both, arrowsize=0.5, penwidth=0.5];\n", index - 1, index);
     }
     for (size_t index = 1; index < lst->list_arr_size; index++) {
         if (lst->arr_next[index] != EMPTY_SPACE && lst->arr_prev[index] != EMPTY_SPACE) {
-            fprintf(o_dmp->fp_graph_txt, "ind%llu:next:e -> ind%d:index:e [weight=0, constraint=false];\n", index, lst->arr_next[index]);
+            fprintf(o_dmp->fp_graph_txt, "ind%llu:next:e -> ind%d:index:e [constraint=false];\n", index, lst->arr_next[index]);
         }
     }
 }
@@ -791,7 +792,6 @@ void PrintHtmlClusters(dump_storage_t *storage) {
     char line_buf[MAX_LINE_LEN] = {};
     size_t num = 0;
     fprintf(storage->fp_html, "<body>\n");
-    // fprintf(storage->fp_html, "<h2>%s<h2>\n", storage->dumps[num].graph_txt_name);
     fprintf(storage->fp_html, "<table>\n");
     TR_CLOSE(storage->fp_html)
     fprintf(storage->fp_html, "<th>index</th>" "<th>next</th>" "<th>data</th>" "<th>prev</th>\n");
