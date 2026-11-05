@@ -46,7 +46,11 @@ int main() {
     ListPop(&lsty, 4);
     ListInsertAfter(&lsty, lsty.tail, 54321);
     DumpToDumpDir(&dmp_strg, &o_dmp, "Dump 3");
+    AssHtml(&dmp_strg);
+    RunStorageHtml(&dmp_strg);
+    
+    
     // ListDestroy(&lsty);
-
+    
     return 0;
 }

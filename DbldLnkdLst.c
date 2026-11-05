@@ -10,6 +10,7 @@
 #include <inttypes.h>
 #include <ctype.h>
 #include <stdarg.h>
+#include <string.h>
 
 #if defined(_WIN32) || defined(_WIN64)
     #include <direct.h>
@@ -34,6 +35,8 @@
 #define START_DUMPS_AMOUNT 16
 #define ORIENTATION_VER "TB"
 #define ORIENTATION_HOR "LR"
+#define STOP_CHAR '$'
+#define MAX_LINE_LEN 65'536
 
 static const char DFLT_DIR_NAME[] = "MyDump";
 static const char DFLT_HTML_NAME[] = "MyHtml.html";
@@ -52,6 +55,10 @@ static const char DFLT_DUMP_TXT_NAME[] = "MyDumpTxt.txt";
     snprintf(dest, str_size, "%s%c%s", dir_name, PATH_SEPARATOR, f_name)
 
 #define CLOSE_BRACE(fp) fprintf(fp, "}\n")
+
+#define TR_OPEN(fp) fprintf(fp, "<tr>\n")
+
+#define TR_CLOSE(fp) fprintf(fp, "</tr>\n");
 
 typedef int list_elem_t;
 
@@ -159,6 +166,11 @@ bool AddTailNodeMarker(one_dump_t *o_dmp, size_t index);
 void AddFreeNodeMarker(one_dump_t *o_dmp, linked_list_t *lst, size_t index, size_t *free_cntr);
 void PrintColorfulNode(FILE *fp, linked_list_t *lst, size_t index, const char *color);
 const char *CrPngGraphLine(const char *txt_path, const char *png_path);
+int RunStorageHtml(dump_storage_t *storage);
+int AssHtml(dump_storage_t *storage);
+void PrintHtmlClusters(dump_storage_t *storage);
+void TableEndPrint(dump_storage_t *storage, size_t num);
+void SetHtmlDumpStyle(FILE *fp);
 int DumpToDumpDir(dump_storage_t *strg, one_dump_t *o_dmp, const char *commentary);
 char *AddNumToName(const char *f_name, size_t number);
 uint8_t CountDigits(size_t number);
@@ -654,6 +666,7 @@ void PrintIndexatedPath(one_dump_t *o_dmp, linked_list_t *lst) {
             }
         }
         fprintf(o_dmp->fp_graph_txt, "ind%llu -> ind%llu;\n", index - 1, index);
+        // fprintf(o_dmp->fp_graph_txt, "ind%llu -> ")
     }
 }
 
@@ -726,6 +739,110 @@ const char *CrPngGraphLine(const char *txt_path, const char *png_path) {
 // Собирает html
 // }
 
+int RunStorageHtml(dump_storage_t *storage) {
+    assert(storage);
+
+    fclose(storage->fp_html);
+    ChWorkingPath(storage->dir_name);
+    StartHtmlFile(storage->html_name);
+    storage->fp_html = LogOpen(storage->html_name, "r");
+    ChWorkingPath("..");
+    return errno;
+}
+
+int AssHtml(dump_storage_t *storage) {
+    assert(storage);
+
+    if ((storage->fp_txt = freopen(CrDirFilePath(storage->dir_name, storage->txt_name), "r", storage->fp_txt)) == NULL) {
+        fprintf(stderr, "ERROR %d while REOPENING %s: %s\n", 
+            errno, CrDirFilePath(storage->dir_name, storage->txt_name), strerror(errno));
+        return errno;
+    }
+    if ((storage->fp_html = freopen(CrDirFilePath(storage->dir_name, storage->html_name), "w", storage->fp_html)) == NULL) {
+        fprintf(stderr, "ERROR %d while REOPENING %s: %s\n", 
+            errno, CrDirFilePath(storage->dir_name, storage->html_name), strerror(errno));
+        return errno;
+    }
+    
+    fprintf(storage->fp_html, "<!DOCTYPE html>\n");
+    fprintf(storage->fp_html, "<html lang=\"ru\">\n");
+    fprintf(storage->fp_html, "<head>\n");
+    fprintf(storage->fp_html, "<meta charset=\"UTF-8\">\n");
+    fprintf(storage->fp_html, "<title>Dump from %s at %s in %s</title>\n", __FILE__, __TIME__, __DATE__);
+    SetHtmlDumpStyle(storage->fp_html);
+    fprintf(storage->fp_html, "</head>\n");
+    PrintHtmlClusters(storage);
+    fprintf(storage->fp_html, "</html>\n");
+    
+    if ((storage->fp_txt = freopen(CrDirFilePath(storage->dir_name, storage->txt_name), "a", storage->fp_txt)) == NULL) {
+        fprintf(stderr, "ERROR %d while REOPENING %s: %s\n", 
+            errno, CrDirFilePath(storage->dir_name, storage->txt_name), strerror(errno));
+        return errno;
+    }
+    return errno;
+}
+
+void PrintHtmlClusters(dump_storage_t *storage) {
+    assert(storage);
+
+    char line_buf[MAX_LINE_LEN] = {};
+    size_t num = 0;
+    fprintf(storage->fp_html, "<body>\n");
+    fprintf(storage->fp_html, "<h2>%s<h2>\n", storage->dumps[num].graph_txt_name);
+    fprintf(storage->fp_html, "<table>\n");
+    TR_CLOSE(storage->fp_html)
+    fprintf(storage->fp_html, "<th>index</th>" "<th>next</th>" "<th>data</th>" "<th>prev</th>\n");
+    TR_CLOSE(storage->fp_html)
+    int ind = 0, ne = 0, da = 0, pr = 0;
+    while (fgets(line_buf, MAX_LINE_LEN, storage->fp_txt) != NULL) {
+        if (line_buf[0] == '$') {
+            TableEndPrint(storage, num);
+            num++;
+            continue;
+        }
+        if (sscanf(line_buf, "%d %d %d %d", &ind, &ne, &da, &pr)) {
+            TR_CLOSE(storage->fp_html)
+            fprintf(storage->fp_html, "<th>%d</th>" "<th>%d</th>" "<th>%d</th>" "<th>%d</th>\n", ind, ne, da, pr);
+            TR_CLOSE(storage->fp_html)
+        }
+        else {
+            fprintf(storage->fp_html, "<pre>\n");
+            fprintf(storage->fp_html, line_buf);
+            fprintf(storage->fp_html, "</pre>\n");
+        }
+    }
+    fprintf(storage->fp_html, "</body>\n");
+}
+
+void TableEndPrint(dump_storage_t *storage, size_t num) {
+    assert(storage);
+
+    fprintf(storage->fp_html, "</table>\n");
+    fprintf(storage->fp_html, "<img src=\"%s\" alt=\"%s\">\n", storage->dumps[num].png_name, storage->dumps[num].png_name);
+    fprintf(storage->fp_html, "<h2>%s</h2>\n", storage->dumps[num].graph_txt_name);
+    fprintf(storage->fp_html, "<table>\n");
+    TR_CLOSE(storage->fp_html)
+    fprintf(storage->fp_html, "<th>index</th>" "<th>next</th>" "<th>data</th>" "<th>prev</th>\n");
+    TR_CLOSE(storage->fp_html)
+}
+
+void SetHtmlDumpStyle(FILE *fp) {
+    assert(fp);
+
+    fprintf(fp, "<style>\n");
+    fprintf(fp, "body {\n");
+    fprintf(fp, "font-family: Arial, sans-serif; color: #333333; max-width: 1200px; margin: 0; padding: 20px;\n");
+    CLOSE_BRACE(fp);
+    fprintf(fp, "h2 { color: #111111; }\n");
+    fprintf(fp, "table { width: 100%%; border-collapse: collapse; margin: 15px 0; }\n" 
+        "th, td { border: 1px solid #cccccc; padding: 8px; text-align: left; }\n" 
+        "th { background: #f5f5f5; }\n");
+    fprintf(fp, "img { max-width: 600px; width: 100%%; height: auto; display: block; margin-bottom: 5px; }\n" 
+        ".caption { font-size: 14px; color: #666666; font-style: Verdana; margin-bottom: 20px; }\n");
+    fprintf(fp, "pre { font-family: inherit; white-space: pre-wrap; margin: 15px 0 35px 0; }\n");
+    fprintf(fp, "</style>\n");
+}
+
 int DumpToDumpDir(dump_storage_t *strg, one_dump_t *o_dmp, const char *commentary) {
     assert(strg);
     assert(o_dmp);
@@ -734,6 +851,8 @@ int DumpToDumpDir(dump_storage_t *strg, one_dump_t *o_dmp, const char *commentar
     o_dmp->png_name = (const char *)AddNumToName(o_dmp->png_name, strg->dumps_amount + 1);
     ChWorkingPath(strg->dir_name);
     GenGraph(o_dmp, strg->dumped_lst, commentary);
+    ListDump(strg->fp_txt, strg->dumped_lst);
+    fprintf(strg->fp_txt, "$\n");
     // сначала пользователь вызывает именование файлов. Потом деалет с заполненными именами что хочет. Если ему нужно, то он может вызвать эту функцию и получить GenGraph либо в эту папку сторедж либо просто вызвать GenGraph
     if (strg->dumps_amount >= strg->dumps_massive_size) {
         strg->dumps_massive_size *= 2;
