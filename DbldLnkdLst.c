@@ -8,7 +8,6 @@
 #include <string.h>
 #include <time.h>
 #include <inttypes.h>
-#include <ctype.h>
 #include <stdarg.h>
 #include <string.h>
 
@@ -641,6 +640,7 @@ void PrintIndexatedPath(one_dump_t *o_dmp, linked_list_t *lst) {
 
     PrintStartingNodes(o_dmp->fp_graph_txt, lst);
     bool head_found = false, tail_found = false;
+    
     for (size_t index = 1, free_cntr = 0; index < lst->list_arr_size; index++) {
         fprintf(o_dmp->fp_graph_txt, "anchor%llu [shape=point, style=invis, width=0, height=0];\n", index);
         fprintf(o_dmp->fp_graph_txt, "anchor%llu -> anchor%llu [style=invis, weight=100];\n", index - 1, index);
@@ -665,8 +665,12 @@ void PrintIndexatedPath(one_dump_t *o_dmp, linked_list_t *lst) {
                 fprintf(o_dmp->fp_graph_txt, "{rank=same; anchor%llu; ind%llu; }\n", index, index);
             }
         }
-        fprintf(o_dmp->fp_graph_txt, "ind%llu -> ind%llu;\n", index - 1, index);
-        // fprintf(o_dmp->fp_graph_txt, "ind%llu -> ")
+        fprintf(o_dmp->fp_graph_txt, "ind%llu -> ind%llu [weight=50, style=dashed, dir=both, arrowsize=0.5, penwidth=0.5];\n", index - 1, index);
+    }
+    for (size_t index = 1; index < lst->list_arr_size; index++) {
+        if (lst->arr_next[index] != EMPTY_SPACE && lst->arr_prev[index] != EMPTY_SPACE) {
+            fprintf(o_dmp->fp_graph_txt, "ind%llu:next:e -> ind%d:index:e [weight=0, constraint=false];\n", index, lst->arr_next[index]);
+        }
     }
 }
 
@@ -676,8 +680,8 @@ void PrintStartingNodes(FILE *fp, linked_list_t *lst) {
 
     fprintf(fp, "label=<<FONT FACE=\"Verdana\"><B>Path by Indexation</B></FONT>>;\n");
     fprintf(fp, "node[shape=Mrecord];\n");
-    fprintf(fp, "ind0 [label=\"{index = 0 | {next (head) = %d | prev (tail) = %d} | value (IMPLIED PZ) = %d}\", color=\"#a70000\", fontsize=10];\n", 
-        lst->arr_next[0], lst->arr_prev[0], lst->arr_data[0]);
+    fprintf(fp, "ind0 [label=\"{ <index> index = 0 | {prev (tail) = %d | <next> next (head) = %d} | value (IMPLIED PZ) = %d}\", color=\"#8e00a7\", fontsize=10];\n", 
+        lst->arr_prev[0], lst->arr_next[0], lst->arr_data[0]);
     fprintf(fp, "anchor0 [shape=point, style=invis, width=0, height=0];\n");
     fprintf(fp, "{rank=same; anchor0; ind0; }\n");
 }
@@ -706,8 +710,7 @@ void AddFreeNodeMarker(one_dump_t *o_dmp, linked_list_t *lst, size_t index, size
     assert(free_cntr);
 
     fprintf(o_dmp->fp_graph_txt, "free%llu [shape=ellipse, label=\"FREE\", color=\"#03a700\", fontsize=12];\n", *free_cntr);
-    fprintf(o_dmp->fp_graph_txt, "ind%llu [label=\"{ index = %llu | {prev = %d | next = %d} | value = %d}\", color=\"#03a700\", fontsize=10];\n", 
-        index, index, lst->arr_prev[index], lst->arr_next[index], lst->arr_data[index]);
+    PrintColorfulNode(o_dmp->fp_graph_txt, lst, index, "#03a700");
     fprintf(o_dmp->fp_graph_txt, "{rank=same; anchor%llu; ind%llu; free%llu; }\n", index, index, *free_cntr);
     fprintf(o_dmp->fp_graph_txt, "free%llu :e -> anchor%llu :w [constraint=false];\n", *free_cntr, index);
     (*free_cntr)++;
@@ -718,7 +721,7 @@ void PrintColorfulNode(FILE *fp, linked_list_t *lst, size_t index, const char *c
     assert(lst);
     assert(color);
 
-    fprintf(fp, "ind%llu [label=\"{ index = %llu | {prev = %d | next = %d} | value = %d}\", color=\"%s\", fontsize=10];\n", 
+    fprintf(fp, "ind%llu [label=\"{ <index> index = %llu | {prev = %d | <next> next = %d} | value = %d}\", color=\"%s\", fontsize=10];\n", 
         index, index, lst->arr_prev[index], lst->arr_next[index], lst->arr_data[index], color);
 }
 
@@ -788,7 +791,7 @@ void PrintHtmlClusters(dump_storage_t *storage) {
     char line_buf[MAX_LINE_LEN] = {};
     size_t num = 0;
     fprintf(storage->fp_html, "<body>\n");
-    fprintf(storage->fp_html, "<h2>%s<h2>\n", storage->dumps[num].graph_txt_name);
+    // fprintf(storage->fp_html, "<h2>%s<h2>\n", storage->dumps[num].graph_txt_name);
     fprintf(storage->fp_html, "<table>\n");
     TR_CLOSE(storage->fp_html)
     fprintf(storage->fp_html, "<th>index</th>" "<th>next</th>" "<th>data</th>" "<th>prev</th>\n");
@@ -802,7 +805,7 @@ void PrintHtmlClusters(dump_storage_t *storage) {
         }
         if (sscanf(line_buf, "%d %d %d %d", &ind, &ne, &da, &pr)) {
             TR_CLOSE(storage->fp_html)
-            fprintf(storage->fp_html, "<th>%d</th>" "<th>%d</th>" "<th>%d</th>" "<th>%d</th>\n", ind, ne, da, pr);
+            fprintf(storage->fp_html, "<td>%d</td>" "<td>%d</td>" "<td>%d</td>" "<td>%d</td>\n", ind, ne, da, pr);
             TR_CLOSE(storage->fp_html)
         }
         else {
@@ -834,7 +837,7 @@ void SetHtmlDumpStyle(FILE *fp) {
     fprintf(fp, "font-family: Arial, sans-serif; color: #333333; max-width: 1200px; margin: 0; padding: 20px;\n");
     CLOSE_BRACE(fp);
     fprintf(fp, "h2 { color: #111111; }\n");
-    fprintf(fp, "table { width: 100%%; border-collapse: collapse; margin: 15px 0; }\n" 
+    fprintf(fp, "table { width: 50%%; border-collapse: collapse; margin: 15px 0; table-layout: fixed; }\n" 
         "th, td { border: 1px solid #cccccc; padding: 8px; text-align: left; }\n" 
         "th { background: #f5f5f5; }\n");
     fprintf(fp, "img { max-width: 600px; width: 100%%; height: auto; display: block; margin-bottom: 5px; }\n" 
