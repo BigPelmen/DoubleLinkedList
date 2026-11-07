@@ -172,6 +172,7 @@ bool AddHeadNodeMarker(one_dump_t *o_dmp, size_t index);
 bool AddTailNodeMarker(one_dump_t *o_dmp, size_t index);
 void AddFreeNodeMarker(one_dump_t *o_dmp, linked_list_t *lst, size_t index, size_t *free_cntr);
 void PrintColorfulNode(FILE *fp, linked_list_t *lst, size_t index, const char *color);
+void PrintGraphLinks(FILE *fp, linked_list_t *lst);
 const char *CrPngGraphLine(const char *txt_path, const char *png_path);
 int RunStorageHtml(dump_storage_t *storage);
 int AssHtml(dump_storage_t *storage);
@@ -330,7 +331,6 @@ void ListDump(FILE *dump_out_stream, linked_list_t *lst) {
     fprintf(stdout, "%3d\n", lst->arr_data[___to___]); \
     } while(0); \
     break
-
 void ListPrintOrderly(linked_list_t *lst, direction_print_t direction) {
     assert(lst);
     
@@ -343,7 +343,6 @@ void ListPrintOrderly(linked_list_t *lst, direction_print_t direction) {
         PRINT_PATH("Tail -> Head", lst->tail, lst->head, prev);
     };
 }
-
 #undef PRINT_PATH
 
 // !SECTION
@@ -387,7 +386,6 @@ size_t CountListFilledData(linked_list_t *lst, what_count_t w_cnt) {
     }
     return cntr;
 }
-
 #undef COUNT_FILLED
 
 #define GO_PATH(___from___, ___to___, ___inds_to___, ___inds_from___) \
@@ -404,7 +402,6 @@ size_t CountListFilledData(linked_list_t *lst, what_count_t w_cnt) {
             ind = lst->arr_##___inds_to___[ind]; \
             cntr++; \
     } } while(0)
-
 #define WHICH_CASE(___to___, ___inds_from___, ___inds_to___, ___str_fr___, ___str_to___, ___lst_err___) do { \
     SPAM_ON(if (cntr >= lst->list_arr_size || cntr != filled_data_amount || \
         ind != ___to___ || lst->arr_##___inds_from___[lst->arr_##___inds_to___[ind]] != ___to___) { \
@@ -417,7 +414,6 @@ size_t CountListFilledData(linked_list_t *lst, what_count_t w_cnt) {
             ind, ___to___, ind, lst->arr_##___inds_from___[lst->arr_##___inds_to___[ind]]);) \
         lst->err |= ___lst_err___; \
     } } while (0)
-
 void ListHeadToTailPathCheck(linked_list_t *lst, size_t filled_data_amount) {
     assert(lst);
 
@@ -431,7 +427,6 @@ void ListTailToHeadPathCheck(linked_list_t *lst, size_t filled_data_amount) {
     GO_PATH(lst->tail, lst->head, prev, next);
     WHICH_CASE(lst->head, next, prev, "TAIL", "HEAD", ELIST_NO_HEAD_MATCH);
 }
-
 #undef GO_PATH
 #undef WHICH_CASE
 
@@ -441,7 +436,6 @@ void ListTailToHeadPathCheck(linked_list_t *lst, size_t filled_data_amount) {
             cntr, filled_data_amount ___extra_arg___); \
     lst->err |= ___lst_err___; \
     } while(0)
-
 void ListCounterNoMatch(linked_list_t *lst, size_t cntr, size_t filled_data_amount) {
     assert(lst);
 
@@ -452,9 +446,13 @@ void ListCounterNoMatch(linked_list_t *lst, size_t cntr, size_t filled_data_amou
         COUNT_NO_MATCH("COUNTED WRONG AMOUNT: ", "}" , lst->list_arr_size, EXTRA_ARGS());
     }
 }
-
 #undef COUNT_NO_MATCH
 
+#define H_T_DAMAGED(___inds___, ___h_t___, ___lst_err___) do { \
+        if (lst->arr_##___inds___[0] < 0 || (size_t)lst->arr_##___inds___[0] >= lst->list_arr_size || \
+            lst->arr_##___inds___[0] != ___h_t___) { \
+            lst->err |= ___lst_err___; \
+    } } while(0)
 void ListCheckZeroethElems(linked_list_t *lst) {
     assert(lst);
 
@@ -465,13 +463,10 @@ void ListCheckZeroethElems(linked_list_t *lst) {
             break;
         }
     }
-    if (lst->arr_next[0] < 0 || (size_t)lst->arr_next[0] >= lst->list_arr_size || lst->arr_next[0] != lst->head) {
-        lst->err |= ELIST_HEAD_DAMAGED;
-    }
-    if (lst->arr_prev[0] < 0 || (size_t)lst->arr_prev[0] >= lst->list_arr_size || lst->arr_prev[0] != lst->tail) {
-        lst->err |= ELIST_TAIL_DAMAGED;
-    }
+    H_T_DAMAGED(next, lst->head, ELIST_HEAD_DAMAGED);
+    H_T_DAMAGED(prev, lst->tail, ELIST_TAIL_DAMAGED);
 }
+#undef H_T_DAMAGED
 
 #define IMPLIED(___what___) fprintf(output_stream, "IMPLIED: " ___what___ "\n")
 #define IF_DAMAGED(___lst_err____, ___imply___) do { \
@@ -486,7 +481,6 @@ void ListCheckZeroethElems(linked_list_t *lst) {
     if (___lst_ptr___->err & ___lst_err___) { \
         fprintf(output_stream, ___str___ "\n"); \
     } } while(0)
-
 void ListAnalyzeErrors(linked_list_t *lst, FILE *output_stream) {
     assert(lst);
     assert(output_stream);
@@ -503,25 +497,11 @@ void ListAnalyzeErrors(linked_list_t *lst, FILE *output_stream) {
     IF_DAMAGED(ELIST_HEAD_DAMAGED, "HEAD is DAMAGED or does not match the referred element");
     IF_DAMAGED(ELIST_TAIL_DAMAGED, "TAIL is DAMAGED or does not match the referred element");
 }
-
 #undef IF_DAMAGED
 #undef IMPLIED
 #undef END_NO_MATCH
 
 // !SECTION
-
-// int CreateDump(linked_list_t *lst, int pathes_amount, ...) {
-//     assert(lst);
-
-//     va_list ap;
-//     va_start(ap, pathes_amount);
-//     graph_dump_t dump_struct = {};
-//     FillGraphStruct(lst, &dump_struct, pathes_amount, ap);
-//     va_end(ap);
-//     CrDirWhereExecuted(dump_struct.dir_name);
-    
-//     return errno;
-// }
 
 int CreateDumpStorage(linked_list_t *lst, dump_storage_t *storage, dir_html_txt_t names_amount, ...) {
     assert(lst);
@@ -563,23 +543,12 @@ int CreateOneDumpNames(one_dump_t *o_dmp, o_dmp_mode_t names_amount, ...) {
     return errno;
 }
 
-// int FillOneDump(one_dump_t *o_dmp) {
-//     assert(o_dmp);
-
-    
-// }
-
-// TODO GenGraph(one_dump_t *o_dmp, const char *commentary) {
-// Тупо создаёт файл и записывает в него, а потом делает png, и может быть вызвана откуда угодно. В функции ниже имена фалов заранее переделывабтся под место папки
-// }
-
 #define NODESEP_VAL 0.5
 #define SPLINES_TYPE "spline"
 #define FONT_SIZE 20
 #define LABEL_FONT "Verdana"
 
 #define OPEN_SUBGRAPH(___name___) fprintf(o_dmp->fp_graph_txt, "subgraph cluster_" ___name___ " {\n")
-
 #define SET_GLOBAL_SETTINGS(___stream___) do { \
         fprintf(___stream___, "digraph G {\n"); \
         fprintf(___stream___, "nodesep=%lg;\n", NODESEP_VAL); \
@@ -588,13 +557,11 @@ int CreateOneDumpNames(one_dump_t *o_dmp, o_dmp_mode_t names_amount, ...) {
             LABEL_FONT "\";\n", commentary, FONT_SIZE); \
         fprintf(___stream___, "rankdir=%s;\n", ORIENTATION_VER); \
     } while(0)
-
 #define BUILD_SUBGRAPH(___name___, ___f_n___) do { \
         OPEN_SUBGRAPH(___name___); \
         ___f_n___(o_dmp, lst); \
         CLOSE_BRACE(o_dmp->fp_graph_txt); \
     } while(0)
-
 int GenGraph(one_dump_t *o_dmp, linked_list_t *lst, const char *commentary) {
     assert(o_dmp);
     assert(lst);
@@ -609,7 +576,6 @@ int GenGraph(one_dump_t *o_dmp, linked_list_t *lst, const char *commentary) {
     system(CrPngGraphLine(o_dmp->graph_txt_name, o_dmp->png_name));
     return errno;
 }
-
 #undef OPEN_SUBGRAPH
 #undef BUILD_SUBGRAPH
 #undef SET_GLOBAL_SETTINGS
@@ -618,7 +584,6 @@ int GenGraph(one_dump_t *o_dmp, linked_list_t *lst, const char *commentary) {
 #define GEN_NODE_STR(___n_n___, ___color___, ___inds_w___, ___inds_e___, ___font_size___) \
     ___n_n___ "%llu [label=\"{index = %d | {" #___inds_w___ " = %d | " #___inds_e___ " = %d} | value = %d}\", color=\"" \
     ___color___ "\", fontsize=" #___font_size___ "];\n"
-
 #define PRINT_IN_DIRECTION(___from___, ___to___, ___node_name___, ___inds_from___, ___inds_to___) do { \
         int ind = ___from___; \
         size_t cntr = 2; \
@@ -633,11 +598,9 @@ int GenGraph(one_dump_t *o_dmp, linked_list_t *lst, const char *commentary) {
             cntr, ind, lst->arr_##___inds_from___[ind], lst->arr_##___inds_to___[ind], lst->arr_data[ind]); \
         fprintf(o_dmp->fp_graph_txt, ___node_name___ "%llu -> " ___node_name___ "%d [constraint=false];\n", cntr, 2); \
     } while(0)
-
 #define SET_SUBGRAPH_SETTINGS(___font___, ___shape___, ___lab___) \
     fprintf(o_dmp->fp_graph_txt, "label=<<FONT FACE=\"" ___font___ "\"><B>" ___lab___ "</B></FONT>>;\n"); \
     fprintf(o_dmp->fp_graph_txt, "node[shape=" ___shape___ "];\n");
-
 void PrintHeadToTail(one_dump_t *o_dmp, linked_list_t *lst) {
     assert(o_dmp);
     assert(lst);
@@ -653,16 +616,23 @@ void PrintTailToHead(one_dump_t *o_dmp, linked_list_t *lst) {
     SET_SUBGRAPH_SETTINGS(LABEL_FONT, NODE_SHAPE, "Tail to Head")
     PRINT_IN_DIRECTION(lst->tail, lst->head, "ttoh", next, prev);
 }
-
 #undef PRINT_IN_DIRECTION
 #undef GEN_NODE_STR
 #undef SET_SUBGRAPH_SETTINGS
 
+#define PENWIDTH_NODE 2.5
+
+#define IF_HEAD_TAIL(___ind___, ___f_n___, ___color___) \
+    if (index == (size_t)lst->___ind___) { \
+        PrintColorfulNode(o_dmp->fp_graph_txt, lst, index, ___color___); \
+        if (!___ind___##_found) { \
+            ___ind___##_found = ___f_n___(o_dmp, index); \
+    } }
 void PrintIndexatedPath(one_dump_t *o_dmp, linked_list_t *lst) {
     assert(o_dmp);
     assert(lst);
 
-    fprintf(o_dmp->fp_graph_txt, "node[shape=Mrecord, penwidth=2.5];\n");
+    fprintf(o_dmp->fp_graph_txt, "node[shape=Mrecord, penwidth=%lg];\n", PENWIDTH_NODE);
     PrintStartingNodes(o_dmp->fp_graph_txt, lst);
     bool head_found = false, tail_found = false;
     for (size_t index = 1, free_cntr = 0; index < lst->list_arr_size; index++) {
@@ -672,18 +642,8 @@ void PrintIndexatedPath(one_dump_t *o_dmp, linked_list_t *lst) {
             AddFreeNodeMarker(o_dmp, lst, index, &free_cntr);
         }
         else {
-            if (index == (size_t)lst->head) {
-                PrintColorfulNode(o_dmp->fp_graph_txt, lst, index, "#1600a7");
-                if (!head_found) {
-                    head_found = AddHeadNodeMarker(o_dmp, index);
-                }
-            }
-            else if (index == (size_t)lst->tail) {
-                PrintColorfulNode(o_dmp->fp_graph_txt, lst, index, "#df9d05");
-                if (!tail_found) {
-                    tail_found = AddTailNodeMarker(o_dmp, index);
-                }
-            }
+            IF_HEAD_TAIL(head, AddHeadNodeMarker, "#1600a7")
+            else IF_HEAD_TAIL(tail, AddTailNodeMarker, "#df9d05")
             else {
                 PrintColorfulNode(o_dmp->fp_graph_txt, lst, index, "#a70000");
                 fprintf(o_dmp->fp_graph_txt, "{rank=same; anchor%llu; ind%llu; }\n", index, index);
@@ -691,14 +651,21 @@ void PrintIndexatedPath(one_dump_t *o_dmp, linked_list_t *lst) {
         }
         fprintf(o_dmp->fp_graph_txt, "ind%llu -> ind%llu [weight=100, style=dashed, dir=both, arrowsize=0.5, penwidth=0.5];\n", index - 1, index);
     }
+    PrintGraphLinks(o_dmp->fp_graph_txt, lst);
+}
+#undef IF_HEAD_TAIL
+
+void PrintGraphLinks(FILE *fp, linked_list_t *lst) {
+    assert(fp);
+    assert(lst);
+
     for (size_t index = 1; index < lst->list_arr_size; index++) {
         if (lst->arr_next[index] != EMPTY_SPACE && lst->arr_prev[index] != EMPTY_SPACE) {
-            fprintf(o_dmp->fp_graph_txt, "ind%llu:next:e -> ind%d:index:e [constraint=false];\n", index, lst->arr_next[index]);
+            fprintf(fp, "ind%llu:next:e -> ind%d:index:e [constraint=false];\n", index, lst->arr_next[index]);
         }
     }
 }
 
-#define MACRO
 void PrintStartingNodes(FILE *fp, linked_list_t *lst) {
     assert(fp);
     assert(lst);
@@ -710,7 +677,6 @@ void PrintStartingNodes(FILE *fp, linked_list_t *lst) {
     fprintf(fp, "anchor0 [shape=point, style=invis, width=0, height=0];\n");
     fprintf(fp, "{rank=same; anchor0; ind0; }\n");
 }
-#undef MACRO
 
 bool AddHeadNodeMarker(one_dump_t *o_dmp, size_t index) {
     assert(o_dmp);
@@ -764,10 +730,6 @@ const char *CrPngGraphLine(const char *txt_path, const char *png_path) {
     return cmd_line;
 }
 
-// TODO AssHtml(strg) {
-// Собирает html
-// }
-
 int RunStorageHtml(dump_storage_t *storage) {
     assert(storage);
 
@@ -785,7 +747,6 @@ int RunStorageHtml(dump_storage_t *storage) {
                 errno, CrDirFilePath(___dir_name___, ___file_name___), strerror(errno)); \
             return errno; \
     } } while(0)
-
 int AssHtml(dump_storage_t *storage) {
     assert(storage);
 
@@ -805,11 +766,9 @@ int AssHtml(dump_storage_t *storage) {
     RE_OPEN(storage->fp_txt, storage->txt_name, storage->dir_name, "a");
     return errno;
 }
-
 #undef RE_OPEN
 
 #define PRINT_TO_HTML(...) fprintf(storage->fp_html, __VA_ARGS__)
-
 void PrintHtmlClusters(dump_storage_t *storage) {
     assert(storage);
 
@@ -852,7 +811,6 @@ void TableEndPrint(dump_storage_t *storage, size_t num) {
     PRINT_TO_HTML("<th>index</th>" "<th>next</th>" "<th>data</th>" "<th>prev</th>\n");
     TR_CLOSE(storage->fp_html)
 }
-
 #undef PRINT_TO_HTML
 
 void SetHtmlDumpStyle(FILE *fp) {
