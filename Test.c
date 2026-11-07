@@ -36,14 +36,14 @@ int main() {
     CreateOneDumpNames(&o_dmp, DFLT_NAMES);
     // GenGraph(&o_dmp, &lsty, "first attempt");
     DumpToDumpDir(&dmp_strg, &o_dmp, "Dump 1");
-    ListPop(&lsty, lsty.head);
+    ListPop(&lsty, lsty.tail);
     ListInsertAfter(&lsty, lsty.head, 12345);
     ListInsertAfter(&lsty, 0, 55555);
     CreateOneDumpNames(&o_dmp, BOTH_TXT_PNG_NAME, NULL, "SHLOYP.png");
     DumpToDumpDir(&dmp_strg, &o_dmp, "Dump 2");
     ListInsertAfter(&lsty, 0, 121);
     // ListAnalyzeErrors(&lsty, stderr);
-    ListPop(&lsty, 4);
+    ListPop(&lsty, lsty.tail);
     ListInsertAfter(&lsty, lsty.tail, 54321);
     DumpToDumpDir(&dmp_strg, &o_dmp, "Dump 3");
     AssHtml(&dmp_strg);
@@ -54,6 +54,7 @@ int main() {
     DumpToDumpDir(&dmp_strg, &o_dmp, "Dump 4");
     AssHtml(&dmp_strg);
     RunStorageHtml(&dmp_strg);
+    ListVerify(&lsty);
     ListDestroy(&lsty);
     
     return 0;

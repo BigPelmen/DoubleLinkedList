@@ -11,6 +11,14 @@
 #include <stdarg.h>
 #include <string.h>
 
+#define CONSOLE_SPAM
+
+#ifdef CONSOLE_SPAM
+    #define SPAM_ON(...) __VA_ARGS__
+#else
+    #define SPAM_ON(...)
+#endif
+
 #if defined(_WIN32) || defined(_WIN64)
     #include <direct.h>
     #define MAX_CMD_LINE_LEN 8191
@@ -25,7 +33,7 @@
     #define PATH_SEPARATOR '/'
     #define MAKE_DIRECTORY(dir_name) mkdir(dir_name, 0755)
     #define CHANGE_DIRECTORY(dir_path) _chdir(dir_path)
-#endif
+#endif // _WIN32 || _WIN64
 
 #define POISON_BYTE 0xAA
 #define EMPTY_SPACE -1
@@ -200,6 +208,15 @@ int ListInit(linked_list_t *lst, size_t ls_size) {
     return errno;
 }
 
+#define IF_NULL_ARR(___arr_name___, ___str___) do { \
+    int *tmp_##___arr_name___ = (int *)calloc(lst->list_arr_size, sizeof(int)); \
+    if (tmp_##___arr_name___ == NULL) { \
+        FAILED_CALLOC_PRINT(___str___ " indexes array", __func__); \
+        lst->err |= ELIST_CALLOC; \
+    } \
+    lst->arr_##___arr_name___ = tmp_##___arr_name___; \
+    } while(0)
+
 void CreateMassives(linked_list_t *lst) {
     assert(lst);
 
@@ -209,19 +226,11 @@ void CreateMassives(linked_list_t *lst) {
         lst->err |= ELIST_CALLOC;
     }
     lst->arr_data = tmp_data;
-    int *tmp_next = (int *)calloc(lst->list_arr_size, sizeof(int));
-    if (tmp_next == NULL) {
-        FAILED_CALLOC_PRINT("next indexes array", __func__);
-        lst->err |= ELIST_CALLOC;
-    }
-    lst->arr_next = tmp_next;
-    int *tmp_prev = (int *)calloc(lst->list_arr_size, sizeof(int));
-    if (tmp_prev == NULL) {
-        FAILED_CALLOC_PRINT("previous indexes array", __func__);
-        lst->err |= ELIST_CALLOC;
-    }
-    lst->arr_prev = tmp_prev;
+    IF_NULL_ARR(next, "next");
+    IF_NULL_ARR(prev, "previous");
 }
+
+#undef IF_NULL_ARR
 
 list_elem_t *MakePoisonMem(void *arr, size_t bytes_amount) {
     assert(arr);
@@ -230,12 +239,16 @@ list_elem_t *MakePoisonMem(void *arr, size_t bytes_amount) {
     return mems_check;
 }
 
+#define FREE(___ptr___) do { \
+    if (___ptr___) { \
+        free(___ptr___), ___ptr___ = NULL; \
+    } } while(0)
+
 int ListDestroy(linked_list_t *lst) {
     assert(lst);
 
-    free(lst->arr_data), lst->arr_data = NULL;
-    free(lst->arr_next), lst->arr_next = NULL;
-    free(lst->arr_prev), lst->arr_prev = NULL;
+    FREE(lst->arr_data); FREE(lst->arr_next); FREE(lst->arr_prev);
+    lst->list_arr_size = 0;
     return errno;
 }
 
@@ -306,6 +319,18 @@ void ListDump(FILE *dump_out_stream, linked_list_t *lst) {
     }
 }
 
+#define PRINT_PATH(___str___, ___from___, ___to___, ___inds___) do { \
+    fprintf(stdout, ___str___ ":\n"); \
+    i = ___from___; \
+    while (i != ___to___ && cntr < lst->list_arr_size) { \
+        cntr++; \
+        fprintf(stdout, "%3d ", lst->arr_data[i]); \
+        i = lst->arr_##___inds___[i]; \
+    } \
+    fprintf(stdout, "%3d\n", lst->arr_data[___to___]); \
+    } while(0); \
+    break
+
 void ListPrintOrderly(linked_list_t *lst, direction_print_t direction) {
     assert(lst);
     
@@ -313,27 +338,13 @@ void ListPrintOrderly(linked_list_t *lst, direction_print_t direction) {
     size_t cntr = 2;
     switch (direction) {
     case HEAD_TO_TAIL:
-        fprintf(stdout, "Head -> Tail: ");
-        i = lst->head;
-        while (i != lst->tail && cntr < lst->list_arr_size) {
-            cntr++;
-            fprintf(stdout, "%3d ", lst->arr_data[i]);
-            i = lst->arr_next[i];
-        }
-        fprintf(stdout, "%3d\n", lst->arr_data[lst->tail]);
-        break;
+        PRINT_PATH("Head -> Tail", lst->head, lst->tail, next);
     case TAIL_TO_HEAD:
-        i = lst->tail;
-        fprintf(stdout, "Tail -> Head: ");
-        while (i != lst->head && cntr < lst->list_arr_size) {
-            cntr++;
-            fprintf(stdout, "%3d ", lst->arr_data[i]);
-            i = lst->arr_prev[i];
-        }
-        fprintf(stdout, "%3d\n", lst->arr_data[lst->head]);
-        break;
+        PRINT_PATH("Tail -> Head", lst->tail, lst->head, prev);
     };
 }
+
+#undef PRINT_PATH
 
 // !SECTION
 // SECTION - Verifier functions
@@ -358,95 +369,109 @@ int ListVerify(linked_list_t *lst) {
     return lst->err;
 }
 
+#define COUNT_FILLED(___massive___) do { \
+    for (size_t i = 1; i < lst->list_arr_size; i++) { \
+        if (___massive___[i] != EMPTY_SPACE) { \
+            cntr++; \
+        } \
+    } } while (0)
 size_t CountListFilledData(linked_list_t *lst, what_count_t w_cnt) {
     assert(lst);
     
     size_t cntr = 0;
     if (w_cnt == COUNT_NEXT_ARR) {
-        for (size_t i = 1; i < lst->list_arr_size; i++) {
-            if (lst->arr_next[i] != EMPTY_SPACE) {
-                cntr++;
-            }
-        }
+        COUNT_FILLED(lst->arr_next);
     }
     if (w_cnt == COUNT_PREV_ARR) {
-        for (size_t i = 1; i < lst->list_arr_size; i++) {
-            if (lst->arr_prev[i] != EMPTY_SPACE) {
-                cntr++;
-            }
-        }
+        COUNT_FILLED(lst->arr_prev);
     }
     return cntr;
 }
 
+#undef COUNT_FILLED
+
+#define GO_PATH(___from___, ___to___, ___inds_to___, ___inds_from___) \
+    size_t cntr = 1; \
+    int ind = ___from___; \
+    do { \
+        while (ind != ___to___ && cntr < lst->list_arr_size) { \
+            if (lst->arr_##___inds_from___[lst->arr_##___inds_to___[ind]] != ind) { \
+                fprintf(stderr, "NO INDEXES MATCH: " #___inds_from___ "[" #___inds_to___ "[%d]] = %d\n", \
+                    ind, lst->arr_##___inds_from___[lst->arr_##___inds_to___[ind]]); \
+                lst->err |= ELIST_MISMATCH_NEXT_PREV; \
+                break; \
+            } \
+            ind = lst->arr_##___inds_to___[ind]; \
+            cntr++; \
+    } } while(0)
+
+#define WHICH_CASE(___to___, ___inds_from___, ___inds_to___, ___str_fr___, ___str_to___, ___lst_err___) do { \
+    SPAM_ON(if (cntr >= lst->list_arr_size || cntr != filled_data_amount || \
+        ind != ___to___ || lst->arr_##___inds_from___[lst->arr_##___inds_to___[ind]] != ___to___) { \
+        fprintf(stderr, #___str_fr___ " -> " #___str_to___ " ERROR:\n"); \
+    }) \
+    ListCounterNoMatch(lst, cntr, filled_data_amount); \
+    if (ind != ___to___ || lst->arr_##___inds_from___[lst->arr_##___inds_to___[ind]] != ___to___) { \
+        SPAM_ON(fprintf(stderr, "NO " #___str_to___ " MATCH: {ind = %d | " #___to___ " = %d | " #___inds_from___ "[" #___inds_to___ "[%d]] = %d}\n", \
+            ind, ___to___, ind, lst->arr_##___inds_from___[lst->arr_##___inds_to___[ind]]);) \
+        lst->err |= ___lst_err___; \
+    } } while (0)
+
 void ListHeadToTailPathCheck(linked_list_t *lst, size_t filled_data_amount) {
     assert(lst);
 
-    size_t cntr = 1;
-    int ind = lst->head;
-    while (ind != lst->tail && cntr < lst->list_arr_size) {
-        if (lst->arr_prev[lst->arr_next[ind]] != ind) {
-            fprintf(stderr, "NO INDEXES MATCH: prev[next[%d]] = %d\n", ind, lst->arr_prev[lst->arr_next[ind]]);
-            lst->err |= ELIST_MISMATCH_NEXT_PREV;
-            break;
-        }
-        ind = lst->arr_next[ind];
-        cntr++;
-    }
-
-    if (cntr >= lst->list_arr_size || cntr != filled_data_amount || 
-        ind != lst->tail || lst->arr_prev[lst->arr_next[ind]] != lst->tail) {
-        fprintf(stderr, "HEAD -> TAIL ERROR:\n");
-    }
-    ListCounterNoMatch(lst, cntr, filled_data_amount);
-    if (ind != lst->tail || lst->arr_prev[lst->arr_next[ind]] != lst->tail) {
-        fprintf(stderr, "NO TAIL MATCH: {ind = %d | tail = %d | prev[next[%d]] = %d}\n", 
-            ind, lst->tail, ind, lst->arr_prev[lst->arr_next[ind]]);
-        lst->err |= ELIST_NO_TAIL_MATCH;
-    }
+    GO_PATH(lst->head, lst->tail, next, prev);
+    WHICH_CASE(lst->tail, prev, next, "HEAD", "TAIL", ELIST_NO_TAIL_MATCH);
+    // if (cntr >= lst->list_arr_size || cntr != filled_data_amount || 
+    //     ind != lst->tail || lst->arr_prev[lst->arr_next[ind]] != lst->tail) {
+    //     fprintf(stderr, "HEAD -> TAIL ERROR:\n");
+    // }
+    // ListCounterNoMatch(lst, cntr, filled_data_amount);
+    // if (ind != lst->tail || lst->arr_prev[lst->arr_next[ind]] != lst->tail) {
+    //     fprintf(stderr, "NO TAIL MATCH: {ind = %d | tail = %d | prev[next[%d]] = %d}\n", 
+    //         ind, lst->tail, ind, lst->arr_prev[lst->arr_next[ind]]);
+    //     lst->err |= ELIST_NO_TAIL_MATCH;
+    // }
 }
 
 void ListTailToHeadPathCheck(linked_list_t *lst, size_t filled_data_amount) {
     assert(lst);
 
-    size_t cntr = 1;
-    int ind = lst->tail;
-    while (ind != lst->head && cntr < lst->list_arr_size) {
-        if (lst->arr_next[lst->arr_prev[ind]] != ind) {
-            fprintf(stderr, "NO INDEXES MATCH TAIL -> HEAD: next[prev[%d]] = %d\n", 
-                ind, lst->arr_next[lst->arr_prev[ind]]);
-            lst->err |= ELIST_MISMATCH_NEXT_PREV;
-            break;
-        }
-        ind = lst->arr_prev[ind];
-        cntr++;
-    }
-
-    if (cntr >= lst->list_arr_size || cntr != filled_data_amount || 
-        ind != lst->head || lst->arr_next[lst->arr_prev[ind]] != lst->head) {
-        fprintf(stderr, "TAIL -> HEAD ERROR:\n");        
-    }
-    ListCounterNoMatch(lst, cntr, filled_data_amount);
-    if (ind != lst->head || lst->arr_next[lst->arr_prev[ind]] != lst->head) {
-        fprintf(stderr, "NO TAIL MATCH: {ind = %d | tail = %d | prev[next[%d]] = %d}\n", 
-            ind, lst->tail, ind, lst->arr_next[lst->arr_prev[ind]]);
-        lst->err |= ELIST_NO_HEAD_MATCH;
-    }
+    GO_PATH(lst->tail, lst->head, prev, next);
+    WHICH_CASE(lst->head, next, prev, "TAIL", "HEAD", ELIST_NO_HEAD_MATCH);
+    // SPAM_ON(if (cntr >= lst->list_arr_size || cntr != filled_data_amount || 
+    //     ind != lst->head || lst->arr_next[lst->arr_prev[ind]] != lst->head) {
+    //     fprintf(stderr, "TAIL -> HEAD ERROR:\n");        
+    // })
+    // ListCounterNoMatch(lst, cntr, filled_data_amount);
+    // if (ind != lst->head || lst->arr_next[lst->arr_prev[ind]] != lst->head) {
+    //     SPAM_ON(fprintf(stderr, "NO HEAD MATCH: {ind = %d | head = %d | next[prev[%d]] = %d}\n", 
+    //         ind, lst->head, ind, lst->arr_next[lst->arr_prev[ind]]);)
+    //     lst->err |= ELIST_NO_HEAD_MATCH;
+    // }
 }
+
+#undef GO_PATH
+
+#define EXTRA_ARGS(...) __VA_ARGS__
+#define COUNT_NO_MATCH(___start___, ___end___, ___lst_err___, ___extra_arg___) do { \
+    fprintf(stderr, ___start___ "{PASSED BY: %llu elements | SUPPOSED TO PASS: %llu" ___end___ "\n", \
+            cntr, filled_data_amount ___extra_arg___); \
+    lst->err |= ___lst_err___; \
+    } while(0)
 
 void ListCounterNoMatch(linked_list_t *lst, size_t cntr, size_t filled_data_amount) {
     assert(lst);
 
     if (cntr >= lst->list_arr_size) {
-        fprintf(stderr, "LIST NOT CLOSED: {PASSED BY: %llu elements | SUPPOSED TO PASS: %llu | LIST SIZE: %llu}\n", 
-            cntr, filled_data_amount, lst->list_arr_size);
-        lst->err |= ELIST_END_NOT_FOUND;
+        COUNT_NO_MATCH("LIST NOT CLOSED: ", " | LIST SIZE: %llu}", lst->list_arr_size, EXTRA_ARGS(, lst->list_arr_size));
     }
     if (cntr != filled_data_amount) {
-        fprintf(stderr, "COUNTED WRONG AMOUNT: {PASSED BY: %llu | SUPPOSED TO PASS: %llu}\n", cntr, filled_data_amount);
-        lst->err |= ELIST_PARTIAL_ROTATION;
+        COUNT_NO_MATCH("COUNTED WRONG AMOUNT: ", "}" , lst->list_arr_size, EXTRA_ARGS());
     }
 }
+
+#undef COUNT_NO_MATCH
 
 void ListCheckZeroethElems(linked_list_t *lst) {
     assert(lst);
@@ -466,6 +491,16 @@ void ListCheckZeroethElems(linked_list_t *lst) {
     }
 }
 
+#define IMPLIED(___what___) fprintf(output_stream, "IMPLIED: " ___what___ )
+#define IF_DAMAGED(___lst_err____, ___imply___) do { \
+    if (lst->err & ___lst_err____) { \
+        IMPLIED(___imply___); \
+    } } while(0)
+#define END_NO_MATCH(___lst_err___, ___from___, ___to___) do { \
+    if (lst->err & ___lst_err___) { \
+        fprintf(output_stream, "Final index of path \"" ___from___ " -> " ___to___ "\" is NOT " ___to___ "\n"); \
+    } } while (0)
+
 void ListAnalyzeErrors(linked_list_t *lst, FILE *output_stream) {
     assert(lst);
     assert(output_stream);
@@ -482,28 +517,22 @@ void ListAnalyzeErrors(linked_list_t *lst, FILE *output_stream) {
     if (lst->err & ELIST_END_NOT_FOUND) {
         fprintf(output_stream, "TAIL or HEAD is not reached\n");
     }
-    if (lst->err & ELIST_NO_TAIL_MATCH) {
-        fprintf(output_stream, "Final index of path \"HEAD -> TAIL\" is NOT TAIL\n");
-    }
-    if (lst->err & ELIST_NO_HEAD_MATCH) {
-        fprintf(output_stream, "Final index of path \"TAIL -> HEAD\" is not HEAD\n");
-    }
+    END_NO_MATCH(ELIST_NO_TAIL_MATCH, "HEAD", "TAIL");
+    END_NO_MATCH(ELIST_NO_HEAD_MATCH, "TAIL", "HEAD");
     if (lst->err & ELIST_MISMATCH_NEXT_PREV) {
         fprintf(output_stream, "INDEXATION of the next and prev does not match each other\n");
     }
-    if (lst->err & ELIST_PARTIAL_ROTATION) {
-        fprintf(output_stream, "IMPLIED: NOT ALL elements are found in a full path\n");
-    }
+    IF_DAMAGED(ELIST_PARTIAL_ROTATION, "NOT ALL elements are found in a full path\n");
     if (lst->err & ELIST_POISON_BYTE_DAMAGED) {
         fprintf(output_stream, "POISON ELEMENT in data is DAMAGED\n");
     }
-    if (lst->err & ELIST_HEAD_DAMAGED) {
-        fprintf(output_stream, "IMPLIED: HEAD is DAMAGED or does not match the referred element\n");
-    }
-    if (lst->err & ELIST_TAIL_DAMAGED) {
-        fprintf(output_stream, "IMPLIED: TAIL is DAMAGED or does not match the referred element\n");
-    }
+    IF_DAMAGED(ELIST_HEAD_DAMAGED, "HEAD is DAMAGED or does not match the referred element\n");
+    IF_DAMAGED(ELIST_TAIL_DAMAGED, "TAIL is DAMAGED or does not match the referred element\n");
 }
+
+#undef IF_DAMAGED
+#undef IMPLIED
+#undef END_NO_MATCH
 
 // !SECTION
 
@@ -675,6 +704,7 @@ void PrintIndexatedPath(one_dump_t *o_dmp, linked_list_t *lst) {
     }
 }
 
+#define MACRO
 void PrintStartingNodes(FILE *fp, linked_list_t *lst) {
     assert(fp);
     assert(lst);
@@ -686,6 +716,7 @@ void PrintStartingNodes(FILE *fp, linked_list_t *lst) {
     fprintf(fp, "anchor0 [shape=point, style=invis, width=0, height=0];\n");
     fprintf(fp, "{rank=same; anchor0; ind0; }\n");
 }
+#undef MACRO
 
 bool AddHeadNodeMarker(one_dump_t *o_dmp, size_t index) {
     assert(o_dmp);
