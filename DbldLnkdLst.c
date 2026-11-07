@@ -412,7 +412,8 @@ size_t CountListFilledData(linked_list_t *lst, what_count_t w_cnt) {
     }) \
     ListCounterNoMatch(lst, cntr, filled_data_amount); \
     if (ind != ___to___ || lst->arr_##___inds_from___[lst->arr_##___inds_to___[ind]] != ___to___) { \
-        SPAM_ON(fprintf(stderr, "NO " #___str_to___ " MATCH: {ind = %d | " #___to___ " = %d | " #___inds_from___ "[" #___inds_to___ "[%d]] = %d}\n", \
+        SPAM_ON(fprintf(stderr, "NO " #___str_to___ " MATCH: {ind = %d | " #___to___ " = %d | " \
+            #___inds_from___ "[" #___inds_to___ "[%d]] = %d}\n", \
             ind, ___to___, ind, lst->arr_##___inds_from___[lst->arr_##___inds_to___[ind]]);) \
         lst->err |= ___lst_err___; \
     } } while (0)
@@ -422,16 +423,6 @@ void ListHeadToTailPathCheck(linked_list_t *lst, size_t filled_data_amount) {
 
     GO_PATH(lst->head, lst->tail, next, prev);
     WHICH_CASE(lst->tail, prev, next, "HEAD", "TAIL", ELIST_NO_TAIL_MATCH);
-    // if (cntr >= lst->list_arr_size || cntr != filled_data_amount || 
-    //     ind != lst->tail || lst->arr_prev[lst->arr_next[ind]] != lst->tail) {
-    //     fprintf(stderr, "HEAD -> TAIL ERROR:\n");
-    // }
-    // ListCounterNoMatch(lst, cntr, filled_data_amount);
-    // if (ind != lst->tail || lst->arr_prev[lst->arr_next[ind]] != lst->tail) {
-    //     fprintf(stderr, "NO TAIL MATCH: {ind = %d | tail = %d | prev[next[%d]] = %d}\n", 
-    //         ind, lst->tail, ind, lst->arr_prev[lst->arr_next[ind]]);
-    //     lst->err |= ELIST_NO_TAIL_MATCH;
-    // }
 }
 
 void ListTailToHeadPathCheck(linked_list_t *lst, size_t filled_data_amount) {
@@ -439,19 +430,10 @@ void ListTailToHeadPathCheck(linked_list_t *lst, size_t filled_data_amount) {
 
     GO_PATH(lst->tail, lst->head, prev, next);
     WHICH_CASE(lst->head, next, prev, "TAIL", "HEAD", ELIST_NO_HEAD_MATCH);
-    // SPAM_ON(if (cntr >= lst->list_arr_size || cntr != filled_data_amount || 
-    //     ind != lst->head || lst->arr_next[lst->arr_prev[ind]] != lst->head) {
-    //     fprintf(stderr, "TAIL -> HEAD ERROR:\n");        
-    // })
-    // ListCounterNoMatch(lst, cntr, filled_data_amount);
-    // if (ind != lst->head || lst->arr_next[lst->arr_prev[ind]] != lst->head) {
-    //     SPAM_ON(fprintf(stderr, "NO HEAD MATCH: {ind = %d | head = %d | next[prev[%d]] = %d}\n", 
-    //         ind, lst->head, ind, lst->arr_next[lst->arr_prev[ind]]);)
-    //     lst->err |= ELIST_NO_HEAD_MATCH;
-    // }
 }
 
 #undef GO_PATH
+#undef WHICH_CASE
 
 #define EXTRA_ARGS(...) __VA_ARGS__
 #define COUNT_NO_MATCH(___start___, ___end___, ___lst_err___, ___extra_arg___) do { \
@@ -491,7 +473,7 @@ void ListCheckZeroethElems(linked_list_t *lst) {
     }
 }
 
-#define IMPLIED(___what___) fprintf(output_stream, "IMPLIED: " ___what___ )
+#define IMPLIED(___what___) fprintf(output_stream, "IMPLIED: " ___what___ "\n")
 #define IF_DAMAGED(___lst_err____, ___imply___) do { \
     if (lst->err & ___lst_err____) { \
         IMPLIED(___imply___); \
@@ -500,34 +482,26 @@ void ListCheckZeroethElems(linked_list_t *lst) {
     if (lst->err & ___lst_err___) { \
         fprintf(output_stream, "Final index of path \"" ___from___ " -> " ___to___ "\" is NOT " ___to___ "\n"); \
     } } while (0)
+#define IF_ERROR(___lst_ptr___, ___lst_err___, ___str___) do { \
+    if (___lst_ptr___->err & ___lst_err___) { \
+        fprintf(output_stream, ___str___ "\n"); \
+    } } while(0)
 
 void ListAnalyzeErrors(linked_list_t *lst, FILE *output_stream) {
     assert(lst);
     assert(output_stream);
 
-    if (lst->err & ELIST_CALLOC) {
-        fprintf(output_stream, "CALLOC returned NULL while trying to allocate massives for the listn\n");
-    }
-    if (lst->err & ELIST_OVERFLOW) {
-        fprintf(output_stream, "List OVERFLOW has happened\n");
-    }
-    if (lst->err & ELIST_CNT_NEXT_PREV_NO_MATCH) {
-        fprintf(output_stream, "Counted FILLED elements in NEXT and PREV massives are different\n");
-    }
-    if (lst->err & ELIST_END_NOT_FOUND) {
-        fprintf(output_stream, "TAIL or HEAD is not reached\n");
-    }
+    IF_ERROR(lst, ELIST_CALLOC, "CALLOC returned NULL while trying to allocate massives for the list");
+    IF_ERROR(lst, ELIST_OVERFLOW, "List OVERFLOW has happened");
+    IF_ERROR(lst, ELIST_CNT_NEXT_PREV_NO_MATCH, "Counted FILLED elements in NEXT and PREV massives are different");
+    IF_ERROR(lst, ELIST_END_NOT_FOUND, "TAIL or HEAD is not reached");
     END_NO_MATCH(ELIST_NO_TAIL_MATCH, "HEAD", "TAIL");
     END_NO_MATCH(ELIST_NO_HEAD_MATCH, "TAIL", "HEAD");
-    if (lst->err & ELIST_MISMATCH_NEXT_PREV) {
-        fprintf(output_stream, "INDEXATION of the next and prev does not match each other\n");
-    }
-    IF_DAMAGED(ELIST_PARTIAL_ROTATION, "NOT ALL elements are found in a full path\n");
-    if (lst->err & ELIST_POISON_BYTE_DAMAGED) {
-        fprintf(output_stream, "POISON ELEMENT in data is DAMAGED\n");
-    }
-    IF_DAMAGED(ELIST_HEAD_DAMAGED, "HEAD is DAMAGED or does not match the referred element\n");
-    IF_DAMAGED(ELIST_TAIL_DAMAGED, "TAIL is DAMAGED or does not match the referred element\n");
+    IF_ERROR(lst, ELIST_MISMATCH_NEXT_PREV, "INDEXATION of the next and prev does not match each other");
+    IF_DAMAGED(ELIST_PARTIAL_ROTATION, "NOT ALL elements are found in a full path");
+    IF_ERROR(lst, ELIST_POISON_BYTE_DAMAGED, "POISON ELEMENT in data is DAMAGED");
+    IF_DAMAGED(ELIST_HEAD_DAMAGED, "HEAD is DAMAGED or does not match the referred element");
+    IF_DAMAGED(ELIST_TAIL_DAMAGED, "TAIL is DAMAGED or does not match the referred element");
 }
 
 #undef IF_DAMAGED
@@ -599,70 +573,90 @@ int CreateOneDumpNames(one_dump_t *o_dmp, o_dmp_mode_t names_amount, ...) {
 // Тупо создаёт файл и записывает в него, а потом делает png, и может быть вызвана откуда угодно. В функции ниже имена фалов заранее переделывабтся под место папки
 // }
 
+#define NODESEP_VAL 0.5
+#define SPLINES_TYPE "spline"
+#define FONT_SIZE 20
+#define LABEL_FONT "Verdana"
+
+#define OPEN_SUBGRAPH(___name___) fprintf(o_dmp->fp_graph_txt, "subgraph cluster_" ___name___ " {\n")
+
+#define SET_GLOBAL_SETTINGS(___stream___) do { \
+        fprintf(___stream___, "digraph G {\n"); \
+        fprintf(___stream___, "nodesep=%lg;\n", NODESEP_VAL); \
+        fprintf(___stream___, "splines=" SPLINES_TYPE ";\n"); \
+        fprintf(___stream___, "label=\"%s\"; labelloc=\"t\"; fontsize=%d; fontname=\"" \
+            LABEL_FONT "\";\n", commentary, FONT_SIZE); \
+        fprintf(___stream___, "rankdir=%s;\n", ORIENTATION_VER); \
+    } while(0)
+
+#define BUILD_SUBGRAPH(___name___, ___f_n___) do { \
+        OPEN_SUBGRAPH(___name___); \
+        ___f_n___(o_dmp, lst); \
+        CLOSE_BRACE(o_dmp->fp_graph_txt); \
+    } while(0)
+
 int GenGraph(one_dump_t *o_dmp, linked_list_t *lst, const char *commentary) {
     assert(o_dmp);
     assert(lst);
 
     o_dmp->fp_graph_txt = LogOpen(o_dmp->graph_txt_name, "w");
-    fprintf(o_dmp->fp_graph_txt, "digraph G {\n");
-    fprintf(o_dmp->fp_graph_txt, "nodesep=0.5;\n");
-    fprintf(o_dmp->fp_graph_txt, "splines=spline;\n");
-    fprintf(o_dmp->fp_graph_txt, "label=\"%s\"; labelloc=\"t\"; fontsize=20; fontname=\"Verdana\";\n", commentary);
-    fprintf(o_dmp->fp_graph_txt, "rankdir=%s;\n", ORIENTATION_VER);
-    fprintf(o_dmp->fp_graph_txt, "subgraph cluster_1 {\n");
-    PrintHeadToTail(o_dmp, lst);
-    CLOSE_BRACE(o_dmp->fp_graph_txt);
-    fprintf(o_dmp->fp_graph_txt, "subgraph cluster_2 {\n");
-    PrintTailToHead(o_dmp, lst);
-    CLOSE_BRACE(o_dmp->fp_graph_txt);
-    fprintf(o_dmp->fp_graph_txt, "subgraph cluster_3 {\n");
-    PrintIndexatedPath(o_dmp, lst);
-    CLOSE_BRACE(o_dmp->fp_graph_txt);
+    SET_GLOBAL_SETTINGS(o_dmp->fp_graph_txt);
+    BUILD_SUBGRAPH("1", PrintHeadToTail);
+    BUILD_SUBGRAPH("2", PrintTailToHead);
+    BUILD_SUBGRAPH("3", PrintIndexatedPath);
     CLOSE_BRACE(o_dmp->fp_graph_txt);
     fclose(o_dmp->fp_graph_txt);
     system(CrPngGraphLine(o_dmp->graph_txt_name, o_dmp->png_name));
     return errno;
 }
 
+#undef OPEN_SUBGRAPH
+#undef BUILD_SUBGRAPH
+#undef SET_GLOBAL_SETTINGS
+#define NODE_SHAPE "Mrecord"
+
+#define GEN_NODE_STR(___n_n___, ___color___, ___inds_w___, ___inds_e___, ___font_size___) \
+    ___n_n___ "%llu [label=\"{index = %d | {" #___inds_w___ " = %d | " #___inds_e___ " = %d} | value = %d}\", color=\"" \
+    ___color___ "\", fontsize=" #___font_size___ "];\n"
+
+#define PRINT_IN_DIRECTION(___from___, ___to___, ___node_name___, ___inds_from___, ___inds_to___) do { \
+        int ind = ___from___; \
+        size_t cntr = 2; \
+        while (ind != ___to___ && cntr < lst->list_arr_size) { \
+            fprintf(o_dmp->fp_graph_txt, GEN_NODE_STR(___node_name___, "#a70000", ___inds_from___, ___inds_to___, 10), \
+                cntr, ind, lst->arr_##___inds_from___[ind], lst->arr_##___inds_to___[ind], lst->arr_data[ind]); \
+            fprintf(o_dmp->fp_graph_txt, ___node_name___ "%llu -> " ___node_name___ "%llu;\n", cntr, cntr + 1); \
+            ind = lst->arr_##___inds_to___[ind]; \
+            cntr++; \
+        } \
+        fprintf(o_dmp->fp_graph_txt, GEN_NODE_STR(___node_name___, "#a70000", ___inds_from___, ___inds_to___, 10), \
+            cntr, ind, lst->arr_##___inds_from___[ind], lst->arr_##___inds_to___[ind], lst->arr_data[ind]); \
+        fprintf(o_dmp->fp_graph_txt, ___node_name___ "%llu -> " ___node_name___ "%d [constraint=false];\n", cntr, 2); \
+    } while(0)
+
+#define SET_SUBGRAPH_SETTINGS(___font___, ___shape___, ___lab___) \
+    fprintf(o_dmp->fp_graph_txt, "label=<<FONT FACE=\"" ___font___ "\"><B>" ___lab___ "</B></FONT>>;\n"); \
+    fprintf(o_dmp->fp_graph_txt, "node[shape=" ___shape___ "];\n");
+
 void PrintHeadToTail(one_dump_t *o_dmp, linked_list_t *lst) {
     assert(o_dmp);
     assert(lst);
 
-    fprintf(o_dmp->fp_graph_txt, "label=<<FONT FACE=\"Verdana\"><B>Head to Tail</B></FONT>>;\n");
-    fprintf(o_dmp->fp_graph_txt, "node[shape=Mrecord];\n");
-    int ind = lst->head;
-    size_t cntr = 2;
-    while (ind != lst->tail && cntr < lst->list_arr_size) {
-        fprintf(o_dmp->fp_graph_txt, "htot%llu [label=\"{index = %d | {prev = %d | next = %d} | value = %d}\", color=\"#a70000\", fontsize=10];\n", 
-            cntr, ind, lst->arr_prev[ind], lst->arr_next[ind], lst->arr_data[ind]);
-        fprintf(o_dmp->fp_graph_txt, "htot%llu -> htot%llu;\n", cntr, cntr + 1);
-        ind = lst->arr_next[ind];
-        cntr++;
-    }
-    fprintf(o_dmp->fp_graph_txt, "htot%llu [label=\"{index = %d | {prev = %d | next = %d} | value = %d}\", color=\"#a70000\", fontsize=10];\n", 
-            cntr, ind, lst->arr_prev[ind], lst->arr_next[ind], lst->arr_data[ind]);
-    fprintf(o_dmp->fp_graph_txt, "htot%llu -> htot%d [constraint=false];\n", cntr, 2);
+    SET_SUBGRAPH_SETTINGS(LABEL_FONT, NODE_SHAPE, "Head to Tail");
+    PRINT_IN_DIRECTION(lst->head, lst->tail, "htot", prev, next);
 }
 
 void PrintTailToHead(one_dump_t *o_dmp, linked_list_t *lst) {
     assert(o_dmp);
     assert(lst);
 
-    fprintf(o_dmp->fp_graph_txt, "label=<<FONT FACE=\"Verdana\"><B>Tail to Head</B></FONT>>;\n");
-    fprintf(o_dmp->fp_graph_txt, "node[shape=Mrecord];\n");
-    int ind = lst->tail;
-    size_t cntr = 2;
-    while (ind != lst->head && cntr < lst->list_arr_size) {
-        fprintf(o_dmp->fp_graph_txt, "ttoh%llu [label=\"{index = %d | {next = %d | prev = %d} | value = %d}\", color=\"#a70000\", fontsize=10];\n", 
-            cntr, ind, lst->arr_next[ind], lst->arr_prev[ind], lst->arr_data[ind]);
-        fprintf(o_dmp->fp_graph_txt, "ttoh%llu -> ttoh%llu;\n", cntr, cntr + 1);
-        ind = lst->arr_prev[ind];
-        cntr++;
-    }
-    fprintf(o_dmp->fp_graph_txt, "ttoh%llu [label=\"{index = %d | {next = %d | prev = %d} | value = %d}\", color=\"#a70000\", fontsize=10];\n", 
-            cntr, ind, lst->arr_next[ind], lst->arr_prev[ind], lst->arr_data[ind]);
-    fprintf(o_dmp->fp_graph_txt, "ttoh%llu -> ttoh%d [constraint=false];\n", cntr, 2);
+    SET_SUBGRAPH_SETTINGS(LABEL_FONT, NODE_SHAPE, "Tail to Head")
+    PRINT_IN_DIRECTION(lst->tail, lst->head, "ttoh", next, prev);
 }
+
+#undef PRINT_IN_DIRECTION
+#undef GEN_NODE_STR
+#undef SET_SUBGRAPH_SETTINGS
 
 void PrintIndexatedPath(one_dump_t *o_dmp, linked_list_t *lst) {
     assert(o_dmp);
@@ -785,19 +779,18 @@ int RunStorageHtml(dump_storage_t *storage) {
     return errno;
 }
 
+#define RE_OPEN(___fp___, ___file_name___, ___dir_name___, ___mode___) do { \
+        if ((___fp___ = freopen(CrDirFilePath(___dir_name___, ___file_name___), ___mode___, ___fp___)) == NULL) { \
+            fprintf(stderr, "ERROR %d while REOPENING %s: %s\n", \
+                errno, CrDirFilePath(___dir_name___, ___file_name___), strerror(errno)); \
+            return errno; \
+    } } while(0)
+
 int AssHtml(dump_storage_t *storage) {
     assert(storage);
 
-    if ((storage->fp_txt = freopen(CrDirFilePath(storage->dir_name, storage->txt_name), "r", storage->fp_txt)) == NULL) {
-        fprintf(stderr, "ERROR %d while REOPENING %s: %s\n", 
-            errno, CrDirFilePath(storage->dir_name, storage->txt_name), strerror(errno));
-        return errno;
-    }
-    if ((storage->fp_html = freopen(CrDirFilePath(storage->dir_name, storage->html_name), "w", storage->fp_html)) == NULL) {
-        fprintf(stderr, "ERROR %d while REOPENING %s: %s\n", 
-            errno, CrDirFilePath(storage->dir_name, storage->html_name), strerror(errno));
-        return errno;
-    }
+    RE_OPEN(storage->fp_txt, storage->txt_name, storage->dir_name, "r");
+    RE_OPEN(storage->fp_html, storage->html_name, storage->dir_name, "w");
     
     fprintf(storage->fp_html, "<!DOCTYPE html>\n");
     fprintf(storage->fp_html, "<html lang=\"ru\">\n");
@@ -809,23 +802,23 @@ int AssHtml(dump_storage_t *storage) {
     PrintHtmlClusters(storage);
     fprintf(storage->fp_html, "</html>\n");
     
-    if ((storage->fp_txt = freopen(CrDirFilePath(storage->dir_name, storage->txt_name), "a", storage->fp_txt)) == NULL) {
-        fprintf(stderr, "ERROR %d while REOPENING %s: %s\n", 
-            errno, CrDirFilePath(storage->dir_name, storage->txt_name), strerror(errno));
-        return errno;
-    }
+    RE_OPEN(storage->fp_txt, storage->txt_name, storage->dir_name, "a");
     return errno;
 }
+
+#undef RE_OPEN
+
+#define PRINT_TO_HTML(...) fprintf(storage->fp_html, __VA_ARGS__)
 
 void PrintHtmlClusters(dump_storage_t *storage) {
     assert(storage);
 
     char line_buf[MAX_LINE_LEN] = {};
     size_t num = 0;
-    fprintf(storage->fp_html, "<body>\n");
-    fprintf(storage->fp_html, "<table>\n");
+    PRINT_TO_HTML("<body>\n");
+    PRINT_TO_HTML("<table>\n");
     TR_CLOSE(storage->fp_html)
-    fprintf(storage->fp_html, "<th>index</th>" "<th>next</th>" "<th>data</th>" "<th>prev</th>\n");
+    PRINT_TO_HTML("<th>index</th>" "<th>next</th>" "<th>data</th>" "<th>prev</th>\n");
     TR_CLOSE(storage->fp_html)
     int ind = 0, ne = 0, da = 0, pr = 0;
     while (fgets(line_buf, MAX_LINE_LEN, storage->fp_txt) != NULL) {
@@ -836,13 +829,13 @@ void PrintHtmlClusters(dump_storage_t *storage) {
         }
         if (sscanf(line_buf, "%d %d %d %d", &ind, &ne, &da, &pr)) {
             TR_CLOSE(storage->fp_html)
-            fprintf(storage->fp_html, "<td>%d</td>" "<td>%d</td>" "<td>%d</td>" "<td>%d</td>\n", ind, ne, da, pr);
+            PRINT_TO_HTML("<td>%d</td>" "<td>%d</td>" "<td>%d</td>" "<td>%d</td>\n", ind, ne, da, pr);
             TR_CLOSE(storage->fp_html)
         }
         else {
-            fprintf(storage->fp_html, "<pre>\n");
-            fprintf(storage->fp_html, line_buf);
-            fprintf(storage->fp_html, "</pre>\n");
+            PRINT_TO_HTML("<pre>\n");
+            PRINT_TO_HTML(line_buf);
+            PRINT_TO_HTML("</pre>\n");
         }
     }
     fprintf(storage->fp_html, "</body>\n");
@@ -851,14 +844,16 @@ void PrintHtmlClusters(dump_storage_t *storage) {
 void TableEndPrint(dump_storage_t *storage, size_t num) {
     assert(storage);
 
-    fprintf(storage->fp_html, "</table>\n");
-    fprintf(storage->fp_html, "<img src=\"%s\" alt=\"%s\">\n", storage->dumps[num].png_name, storage->dumps[num].png_name);
-    fprintf(storage->fp_html, "<h2>%s</h2>\n", storage->dumps[num].graph_txt_name);
-    fprintf(storage->fp_html, "<table>\n");
+    PRINT_TO_HTML("</table>\n");
+    PRINT_TO_HTML("<img src=\"%s\" alt=\"%s\">\n", storage->dumps[num].png_name, storage->dumps[num].png_name);
+    PRINT_TO_HTML("<h2>%s</h2>\n", storage->dumps[num].graph_txt_name);
+    PRINT_TO_HTML("<table>\n");
     TR_CLOSE(storage->fp_html)
-    fprintf(storage->fp_html, "<th>index</th>" "<th>next</th>" "<th>data</th>" "<th>prev</th>\n");
+    PRINT_TO_HTML("<th>index</th>" "<th>next</th>" "<th>data</th>" "<th>prev</th>\n");
     TR_CLOSE(storage->fp_html)
 }
+
+#undef PRINT_TO_HTML
 
 void SetHtmlDumpStyle(FILE *fp) {
     assert(fp);
@@ -981,30 +976,6 @@ const char *CrDirFilePath(const char *dir_name, const char *f_name) {
     }
     return f_name;
 }
-
-// void FillGraphStruct(linked_list_t *lst, graph_dump_t *dump_struct, int names_amount, va_list ap) {
-//     assert(lst);
-//     assert(dump_struct);
-
-//     if (names_amount > 0) {
-//         const char *names[4] = {NULL, NULL, NULL, NULL};
-//         int i = 0;
-//         while (i < names_amount && i < 4) {
-//             names[i++] = va_arg(ap, const char *);
-//         }
-//         dump_struct->dir_name = (names[0]) ? CrDirName(names[0]) : CrDirName(DFLT_DIR_NAME);
-//         dump_struct->html_name = (names[1]) ? names[1] : DFLT_HTML_NAME;
-//         dump_struct->png_name = (names[2]) ? names[2] : DFLT_PNG_NAME;
-//         dump_struct->txt_name = (names[3]) ? names[3] : DFLT_DUMP_TXT_NAME;
-//     }
-//     else {
-//         dump_struct->dir_name = CrDirName(DFLT_DIR_NAME);
-//         dump_struct->html_name = DFLT_HTML_NAME;
-//         dump_struct->png_name = DFLT_PNG_NAME;
-//         dump_struct->txt_name = DFLT_DUMP_TXT_NAME;
-//     }
-//     dump_struct->lst = lst;
-// }
 
 FILE *LogOpen(const char *f_name, const char *f_mode) {
     assert(f_name);
